@@ -23,7 +23,7 @@ set_target_properties(${TARGET_EXE} PROPERTIES OUTPUT_NAME ${TARGET_NAME})
 # list of required third-party libraries
 find_package(fmt CONFIG REQUIRED)
 find_package(indicators CONFIG REQUIRED)
-find_package(tabulate CONFIG REQUIRED)
+find_package(libfort CONFIG REQUIRED)
 find_package(console CONFIG REQUIRED)
 
 # set project compile definitions
@@ -54,6 +54,7 @@ target_link_directories(${TARGET_EXE}
     ${BUILD_PREFIX_PATH}/lib)
 target_link_libraries(${TARGET_EXE}
   PRIVATE
+    libfort::fort
     fmt::fmt-header-only
     console::console)
 

@@ -13,6 +13,7 @@
 #include <fmt/color.h>
 #include <console/init.hpp>
 #include <console/parser.hpp>
+#include <fort.hpp>
 #include <windows.h>
 
 /*============================================
@@ -51,9 +52,8 @@ std::vector<std::filesystem::path> extract_dirs(const std::string& root,
     std::filesystem::path dir(root);
     dir /= s;
     dir = std::filesystem::absolute(dir);
-    if (!std::filesystem::directory_entry(dir).exists())
-      throw std::runtime_error(fmt::format("the directory: \"{}\" doesn't exists", dir.string()).c_str());
-    dirs.push_back(dir);
+    if (std::filesystem::directory_entry(dir).exists())
+      dirs.push_back(dir);
   }
   return dirs;
 }
@@ -104,6 +104,7 @@ public:
   {
     // start all threads
     m_running = true;
+    std::size_t nb_repos = m_repos.size();
     for (auto& t : m_threads)
       t = std::thread(&SvnRepos::run, this);
 
@@ -113,6 +114,7 @@ public:
         t.join();
 
     // log updated repositories as table
+    log(nb_repos);
   }
 
 private:
@@ -207,18 +209,10 @@ private:
       // read buffer from pipe - until the other end has been broken
       DWORD len = 0;
       char buf[1024];
-      while (true)
+      while (ReadFile(stdout_rd, buf, sizeof(buf) - 1, &len, NULL))
       {
-        // check if there are still data to retrieve from stdout
-        if (!PeekNamedPipe(stdout_rd, 0, 0, 0, &len, 0) || !len)
-          break;
-
-        // read output from the child process's pipe for STDOUT - blocking
-        if (ReadFile(stdout_rd, buf, sizeof(buf), &len, NULL) && len)
-        {
-          buf[len >= sizeof(buf) ? sizeof(buf) - 1 : len] = 0;
-          logs += buf;
-        }
+        buf[len >= sizeof(buf) ? sizeof(buf) - 1 : len] = 0;
+        logs += buf;
       }
       if (GetLastError() != ERROR_SUCCESS && 
           GetLastError() != ERROR_BROKEN_PIPE)
@@ -237,6 +231,32 @@ private:
       CloseHandle(stdout_wr);
 
     return result;
+  }
+  void log(const std::size_t nb_repos)
+  {
+    if (!m_results.empty())
+    {
+       // create table stylesheet
+      fort::utf8_table table;
+      table.set_border_style(FT_NICE_STYLE);
+      table.column(0).set_cell_text_align(fort::text_align::left);
+      table.column(0).set_cell_content_text_style(fort::text_style::bold);
+      table.column(1).set_cell_text_align(fort::text_align::center);
+      table.column(1).set_cell_content_text_style(fort::text_style::bold);
+
+      // create header
+      table << fort::header << "PROJECTS" << "UPDATED" << fort::endr;
+
+      // add rows
+      std::size_t idx = 1;
+      for (const auto& r : m_results)
+      {
+        table << r.first << (r.second ? "OK" : "KO") << fort::endr;
+        table[idx++][1].set_cell_content_fg_color(r.second ? fort::color::green : fort::color::red);
+      }
+      fmt::print("{}\n", table.to_string());
+    }
+    fmt::print("{}/{} repositories have been updated\n", m_results.size(), nb_repos);
   }
 
 private:
