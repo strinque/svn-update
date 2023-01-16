@@ -1,0 +1,23 @@
+{
+  "triplets": [
+    {
+      "name": "x64-windows-static-md",
+      "directory": "x64-release",
+      "crt-link": "dynamic",
+      "lib-link": "static",
+      "platform": "v142",
+      "release": true,
+      "suffix": ""
+    },
+    {
+      "name": "x64-windows",
+      "directory": "x64-debug",
+      "crt-link": "dynamic",
+      "lib-link": "dynamic",
+      "platform": "v142",
+      "release": false,
+      "suffix": ""
+    }
+  ],
+  "overlays": ["third-party/vcpkg-ports/console"]
+}
