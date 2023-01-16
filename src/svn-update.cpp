@@ -21,7 +21,7 @@
 ==============================================*/
 // program version
 const std::string PROGRAM_NAME = "svn-update";
-const std::string PROGRAM_VERSION = "1.5";
+const std::string PROGRAM_VERSION = "1.6";
 
 // default length in characters to align status 
 constexpr std::size_t g_status_len = 50;
@@ -49,7 +49,7 @@ auto add_tag = [](const fmt::color color, const std::string& text) {
 // execute a sequence of actions with tags
 void exec(const std::string& str, std::function<void()> fct)
 {
-  spdlog::debug(fmt::format(fmt::emphasis::bold, "{:<" + std::to_string(g_status_len) + "}", str + ":"));
+  spdlog::debug(fmt::format(fmt::emphasis::bold, "{:<" + std::to_string(g_status_len) + "}", str + ": "));
   try
   {
     fct();
@@ -132,7 +132,7 @@ int main(int argc, char** argv)
   {
     fmt::print("{} {}\n",
       fmt::format(fmt::fg(fmt::color::red) | fmt::emphasis::bold, "error:"),
-      fmt::format("can't create the log file: \"{}\"", log_file.string()));
+      fmt::format("can't create the log file: \"{}\"", log_file.u8string()));
     return -1;
   }
 
@@ -141,7 +141,7 @@ int main(int argc, char** argv)
   {
     // check arguments validity
     if (!std::filesystem::directory_entry(svn_path).exists())
-      throw std::runtime_error(fmt::format("the directory: \"{}\" doesn't exists", svn_path.string()));
+      throw std::runtime_error(fmt::format("the directory: \"{}\" doesn't exists", svn_path.u8string()));
 
     // list all svn repositories
     std::vector<std::filesystem::path> svn_repos;

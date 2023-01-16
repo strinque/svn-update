@@ -133,7 +133,7 @@ private:
       std::size_t idx = 1;
       for (const auto& r : m_results)
       {
-        table << utf8::to_utf8(r.first.string()) << (r.second ? "OK" : "KO") << fort::endr;
+        table << r.first.u8string() << (r.second ? "OK" : "KO") << fort::endr;
         table[idx++][1].set_cell_content_fg_color(r.second ? fort::color::green : fort::color::red);
       }
       spdlog::info("{}\n\n", table.to_string());
