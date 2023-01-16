@@ -1,16 +1,19 @@
 #include <string>
-#include <sstream>
 #include <vector>
 #include <queue>
 #include <deque>
 #include <map>
 #include <regex>
 #include <filesystem>
+#include <memory>
 #include <thread>
 #include <mutex>
 #include <stdbool.h>
 #include <fmt/core.h>
 #include <fmt/color.h>
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/basic_file_sink.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include <console/init.hpp>
 #include <console/parser.hpp>
 #include <fort.hpp>
@@ -30,8 +33,52 @@ const std::string PROGRAM_VERSION = "1.0";
 ==============================================*/
 // lambda function to show colored tags
 auto add_tag = [](const fmt::color color, const std::string& text) {
-  fmt::print(fmt::format(fmt::fg(color) | fmt::emphasis::bold, "[{}]\n", text));
+  spdlog::debug(fmt::format(fmt::fg(color) | fmt::emphasis::bold, "[{}]\n", text));
 };
+
+// initialize logger - spdlog
+bool init_logger(const std::string& file)
+{
+  try
+  {
+    // generate log filename based on date
+    std::filesystem::path log_name(file);
+
+    // initialize console output
+    auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    console_sink->set_level(spdlog::level::debug);
+    console_sink->set_pattern("%v");
+
+    std::shared_ptr<spdlog::logger> logger;
+    if (!file.empty())
+    {
+      // initialize file output
+      auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_name.string(), true);
+      file_sink->set_level(spdlog::level::info);
+      file_sink->set_pattern("%v");
+      logger = std::make_shared<spdlog::logger>(spdlog::logger("multi_sink", { console_sink, file_sink }));
+    }
+    else
+      logger = std::make_shared<spdlog::logger>(spdlog::logger("multi_sink", { console_sink }));
+
+    // set default logger
+    logger->set_level(spdlog::level::trace);
+    spdlog::set_default_logger(logger);
+
+    // disable end-of-line
+    auto custom_formatter = std::make_unique<spdlog::pattern_formatter>("%v", spdlog::pattern_time_type::local, std::string(""));
+    logger->set_formatter(std::move(custom_formatter));
+
+    // activate flush on level: info
+    logger->flush_on(spdlog::level::info);
+
+    return true;
+  }
+  catch (...)
+  {
+    return false;
+  }
+}
 
 // split a string into a vector using a char delimiter
 std::vector<std::string> split(const std::string& s, char delim)
@@ -117,13 +164,12 @@ public:
     m_nb_repos = m_repos.size();
     m_results.clear();
 
-    fmt::print(fmt::emphasis::bold, "launch the svn update commands on repositories:\n");
-
     // initialize progress-bar
     indicators::show_console_cursor(false);
     m_bar.set_option(indicators::option::MaxProgress(m_nb_repos));
 
     // start threads
+    spdlog::debug(fmt::format(fmt::emphasis::bold, "launch the svn update commands on repositories:\n"));
     m_running = true;
     const std::size_t max_cpu = static_cast<std::size_t>(std::thread::hardware_concurrency());
     m_threads = std::vector<std::thread>(std::min(m_nb_repos, max_cpu));
@@ -234,7 +280,7 @@ private:
       // read buffer from pipe - until the other end has been broken
       DWORD len = 0;
       char buf[1024];
-      while (ReadFile(stdout_rd, buf, sizeof(buf) - 1, &len, NULL))
+      while (ReadFile(stdout_rd, buf, sizeof(buf) - 1, &len, NULL) && len)
       {
         buf[len >= sizeof(buf) ? sizeof(buf) - 1 : len] = 0;
         logs += buf;
@@ -242,7 +288,7 @@ private:
       if (GetLastError() != ERROR_SUCCESS && 
           GetLastError() != ERROR_BROKEN_PIPE)
         throw std::runtime_error(fmt::format("ReadFile failed with error: 0x{:x}", GetLastError()).c_str());
-      result = true;
+      result = !logs.empty();
     }
     catch (...)
     {
@@ -280,9 +326,9 @@ private:
         table << r.first << (r.second ? "OK" : "KO") << fort::endr;
         table[idx++][1].set_cell_content_fg_color(r.second ? fort::color::green : fort::color::red);
       }
-      fmt::print("{}\n", table.to_string());
+      spdlog::info("{}\n\n", table.to_string());
     }
-    fmt::print("{}/{} repositories have been updated\n", m_results.size(), m_nb_repos);
+    spdlog::info("total repositories updated: [{}/{}]\n", m_results.size(), m_nb_repos);
   }
 
 private:
@@ -328,13 +374,22 @@ int main(int argc, char** argv)
 
   try
   {
+    // initialize logger
+    if (!init_logger(log_file))
+    {
+      fmt::print("{} {}\n",
+        fmt::format(fmt::fg(fmt::color::red) | fmt::emphasis::bold, "error: "),
+        fmt::format("can't create the log file: \"{}\"", log_file));
+      return -1;
+    }
+
     // construct the list of directories to skip
-    fmt::print(fmt::format(fmt::emphasis::bold, "{:<45}", "get the list of directories to skip:"));
+    spdlog::debug(fmt::format(fmt::emphasis::bold, "{:<45}", "get the list of directories to skip:"));
     std::vector<std::filesystem::path> svn_skip = extract_dirs(svn_path, svn_skip_str);
     add_tag(fmt::color::green, "OK");
 
     // list all svn repositories
-    fmt::print(fmt::format(fmt::emphasis::bold, "{:<45}", "list all svn repositories:"));
+    spdlog::debug(fmt::format(fmt::emphasis::bold, "{:<45}", "list all svn repositories:"));
     std::vector<std::filesystem::path> svn_repos = list_dirs(svn_path, std::regex(R"(\.svn$)"), svn_skip);
     add_tag(fmt::color::green, "OK");
 
@@ -345,10 +400,10 @@ int main(int argc, char** argv)
   catch (const std::exception& ex)
   {
     add_tag(fmt::color::red, "KO");
-    fmt::print("{} {}\n",
+    spdlog::debug("{} {}\n",
       fmt::format(fmt::fg(fmt::color::red) | fmt::emphasis::bold, "error: "),
       ex.what());
-      return -1;
+    return -1;
   }
 
   return 0;
