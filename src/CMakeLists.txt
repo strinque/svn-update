@@ -29,6 +29,7 @@ find_package(console CONFIG REQUIRED)
 # set project compile definitions
 target_compile_definitions(${TARGET_EXE}
   PRIVATE
+    NOMINMAX
     FMT_HEADER_ONLY)
 
 # force utf-8 encoding for source-files
