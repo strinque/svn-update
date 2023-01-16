@@ -14,6 +14,8 @@
 #include <console/init.hpp>
 #include <console/parser.hpp>
 #include <fort.hpp>
+#include <indicators/cursor_control.hpp>
+#include <indicators/progress_bar.hpp>
 #include <windows.h>
 
 /*============================================
@@ -80,11 +82,19 @@ class SvnRepos
 {
 public:
   // constructor
-  SvnRepos(const std::vector<std::filesystem::path>& repos) :
-    m_repos(std::deque(repos.begin(), repos.end())),
+  SvnRepos() :
+    m_repos(),
     m_results(),
+    m_bar(indicators::option::BarWidth{ 50 },
+          indicators::option::Start{ "[" },
+          indicators::option::End{ "]" },
+          indicators::option::Fill{ "■" },
+          indicators::option::Lead{ " " },
+          indicators::option::ForegroundColor{ indicators::Color::white },
+          indicators::option::FontStyles{ std::vector<indicators::FontStyle>{indicators::FontStyle::bold} }),
+    m_nb_repos(),
     m_running(false),
-    m_threads(std::min(repos.size(), static_cast<std::size_t>(std::thread::hardware_concurrency()))),
+    m_threads(),
     m_mutex()
   {
   }
@@ -100,11 +110,23 @@ public:
   }
 
   // start all the threads to update svn repositories
-  void update()
+  void update(const std::vector<std::filesystem::path>& repos)
   {
-    // start all threads
+    // initialize update variables
+    m_repos = std::queue(std::deque(repos.begin(), repos.end()));
+    m_nb_repos = m_repos.size();
+    m_results.clear();
+
+    fmt::print(fmt::emphasis::bold, "launch the svn update commands on repositories:\n");
+
+    // initialize progress-bar
+    indicators::show_console_cursor(false);
+    m_bar.set_option(indicators::option::MaxProgress(m_nb_repos));
+
+    // start threads
     m_running = true;
-    std::size_t nb_repos = m_repos.size();
+    const std::size_t max_cpu = static_cast<std::size_t>(std::thread::hardware_concurrency());
+    m_threads = std::vector<std::thread>(std::min(m_nb_repos, max_cpu));
     for (auto& t : m_threads)
       t = std::thread(&SvnRepos::run, this);
 
@@ -113,8 +135,11 @@ public:
       if (t.joinable())
         t.join();
 
+    // terminate progress-bar
+    indicators::show_console_cursor(true);
+
     // log updated repositories as table
-    log(nb_repos);
+    log();
   }
 
 private:
@@ -138,16 +163,16 @@ private:
       std::regex update_ok(R"(^A |^D |^U |^C |^G |E^ |R^ )");
       bool executed = exec("svn.exe update --accept theirs-full", repo, logs);
 
-      // store result - protected by mutex
-      if (!executed)
+      // store result and update progress-bar - protected by mutex
       {
         std::lock_guard<std::mutex> lck(m_mutex);
-        m_results[repo] = false;
-      }
-      else if (std::regex_search(logs, update_ok))
-      {
-        std::lock_guard<std::mutex> lck(m_mutex);
-        m_results[repo] = true;
+        if (!executed)
+          m_results[repo] = false;
+        else if (std::regex_search(logs, update_ok))
+          m_results[repo] = true;
+        const std::string& postfix = fmt::format("{:02}% [{}/{}]", (m_bar.current()+1)*100/m_nb_repos, m_bar.current()+1, m_nb_repos);
+        m_bar.set_option(indicators::option::PostfixText{ postfix });
+        m_bar.tick();
       }
     }
   }
@@ -232,7 +257,8 @@ private:
 
     return result;
   }
-  void log(const std::size_t nb_repos)
+
+  void log()
   {
     if (!m_results.empty())
     {
@@ -256,13 +282,17 @@ private:
       }
       fmt::print("{}\n", table.to_string());
     }
-    fmt::print("{}/{} repositories have been updated\n", m_results.size(), nb_repos);
+    fmt::print("{}/{} repositories have been updated\n", m_results.size(), m_nb_repos);
   }
 
 private:
   // svn repos informations
   std::queue<std::filesystem::path> m_repos;
   std::map<std::filesystem::path, bool> m_results;
+
+  // progress-bar
+  indicators::ProgressBar m_bar;
+  std::size_t m_nb_repos;
 
   // handling threads
   std::atomic_bool m_running;
@@ -309,8 +339,8 @@ int main(int argc, char** argv)
     add_tag(fmt::color::green, "OK");
 
     // update all the svn repositories
-    SvnRepos svn(svn_repos);
-    svn.update();
+    SvnRepos svn;
+    svn.update(svn_repos);
   }
   catch (const std::exception& ex)
   {
