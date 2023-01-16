@@ -96,8 +96,8 @@ private:
       // execute the update process
       win::sync_process proc;
       proc.set_working_dir(repo);
-      proc.set_timeout(std::chrono::milliseconds(60000));
-      const int exit_code = proc.execute("svn.exe update --accept theirs-full");
+      proc.set_timeout(std::chrono::milliseconds(5 * 60 * 1000));
+      const int exit_code = proc.execute("svn.exe update --accept theirs-full --ignore-externals");
 
       // store result and update progress-bar - protected by mutex
       {

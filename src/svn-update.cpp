@@ -21,7 +21,7 @@
 ==============================================*/
 // program version
 const std::string PROGRAM_NAME = "svn-update";
-const std::string PROGRAM_VERSION = "1.2";
+const std::string PROGRAM_VERSION = "1.4";
 
 // declare as global g_svn for access to exit_program signal
 static SvnRepos g_svn;
@@ -44,13 +44,10 @@ auto add_tag = [](const fmt::color color, const std::string& text) {
 };
 
 // initialize logger - spdlog
-bool init_logger(const std::string& file)
+bool init_logger(const std::filesystem::path& file)
 {
   try
   {
-    // generate log filename based on date
-    std::filesystem::path log_name(file);
-
     // initialize console output
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_level(spdlog::level::debug);
@@ -60,7 +57,7 @@ bool init_logger(const std::string& file)
     if (!file.empty())
     {
       // initialize file output
-      auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_name.string(), true);
+      auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(file.string(), true);
       file_sink->set_level(spdlog::level::info);
       file_sink->set_pattern("%v");
       logger = std::make_shared<spdlog::logger>(spdlog::logger("multi_sink", { console_sink, file_sink }));
@@ -87,33 +84,6 @@ bool init_logger(const std::string& file)
   }
 }
 
-// split a string into a vector using a char delimiter
-std::vector<std::string> split(const std::string& s, char delim)
-{
-  std::stringstream ss(s);
-  std::string item;
-  std::vector<std::string> elems;
-  while (std::getline(ss, item, delim))
-    elems.push_back(std::move(item));
-  return elems;
-}
-
-// extract a list of directories from a string
-std::vector<std::filesystem::path> extract_dirs(const std::string& root,
-                                                const std::string& paths)
-{
-  std::vector<std::filesystem::path> dirs;
-  for (const auto& s : split(paths, ';'))
-  {
-    std::filesystem::path dir(root);
-    dir /= s;
-    dir = std::filesystem::absolute(dir);
-    if (std::filesystem::directory_entry(dir).exists())
-      dirs.push_back(dir);
-  }
-  return dirs;
-}
-
 int main(int argc, char** argv)
 {
   // initialize Windows console
@@ -123,23 +93,23 @@ int main(int argc, char** argv)
   signal(SIGINT, exit_program);
 
   // parse command-line arguments
-  std::string svn_path;
-  std::string svn_skip_str;
-  std::string log_file;
+  std::filesystem::path svn_path;
+  std::vector<std::filesystem::path> svn_skip;
+  std::filesystem::path log_file;
   console::parser parser(PROGRAM_NAME, PROGRAM_VERSION);
   parser.add("p", "path", "set the path to update the svn repositories", svn_path, true)
-        .add("s", "skip", "skip the update of those directories (relative, separated by ';')", svn_skip_str)
+        .add("s", "skip", "skip the update of those directories (separated by ';')", svn_skip)
         .add("l", "log", "save the updated list of directories to a log file", log_file);
   if (!parser.parse(argc, argv))
   {
     parser.print_usage();
     return -1;
   }
-  if (!std::filesystem::directory_entry(std::filesystem::path(svn_path)).exists())
+  if (!std::filesystem::directory_entry(svn_path).exists())
   {
     fmt::print("{} {}\n",
       fmt::format(fmt::fg(fmt::color::red) | fmt::emphasis::bold, "error: "),
-      fmt::format("the directory: \"{}\" doesn't exists", svn_path));
+      fmt::format("the directory: \"{}\" doesn't exists", svn_path.string()));
     return -1;
   }
 
@@ -150,32 +120,23 @@ int main(int argc, char** argv)
     {
       fmt::print("{} {}\n",
         fmt::format(fmt::fg(fmt::color::red) | fmt::emphasis::bold, "error: "),
-        fmt::format("can't create the log file: \"{}\"", log_file));
+        fmt::format("can't create the log file: \"{}\"", log_file.string()));
       return -1;
     }
 
-    // construct the list of directories to skip
-    spdlog::debug(fmt::format(fmt::emphasis::bold, "{:<45}", "get the list of directories to skip:"));
-    const std::vector<std::filesystem::path>& svn_skip = extract_dirs(svn_path, svn_skip_str);
-    add_tag(fmt::color::green, "OK");
-
     // list all svn repositories
     spdlog::debug(fmt::format(fmt::emphasis::bold, "{:<45}", "get all svn repositories:"));
-    const std::regex svn_dir_regex(R"((\.svn$))");
-    auto& dir_filter = [svn_skip, svn_dir_regex](const std::filesystem::path& p) -> bool {
-      auto& eq_dir = [p](const std::filesystem::path& p2) -> bool {
-        return std::filesystem::equivalent(p.parent_path(), p2);
-      };
-      return std::regex_search(p.string(), svn_dir_regex) &&
-             std::find_if(svn_skip.begin(), svn_skip.end(), eq_dir) == svn_skip.end();
-    };
-    const std::vector<std::filesystem::path>& svn_repos = files::get_dirs(svn_path, dir_filter);
+    const std::vector<std::filesystem::path>& svn_repos = files::get_dirs(svn_path, 
+                                                                          files::infinite_depth,
+                                                                          std::regex(R"(\\.svn$)"),
+                                                                          svn_skip);
     add_tag(fmt::color::green, "OK");
 
     // update all the svn repositories
     g_svn.update(svn_repos);
     if (g_cancelled)
       throw std::runtime_error("process has been cancelled");
+    return 0;
   }
   catch (const std::exception& ex)
   {
@@ -185,6 +146,4 @@ int main(int argc, char** argv)
       ex.what());
     return -1;
   }
-
-  return 0;
 }
