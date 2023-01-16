@@ -1,7 +1,9 @@
 {
-    "name": "xxx",
+    "name": "svnupdate",
     "version": "1.0.0",
     "dependencies": [
+        "indicators",
+        "tabulate",
         "fmt",
         "console"
     ]

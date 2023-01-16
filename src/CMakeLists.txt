@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
-project(xxx)
-set(TARGET_EXE "xxx-exe")
-set(TARGET_NAME "xxx")
+project(svn-update)
+set(TARGET_EXE "svn-update-exe")
+set(TARGET_NAME "svn-update")
 
 # set required c++ version
 set(CMAKE_CXX_STANDARD 17)
@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # set project source-files
 set(SOURCE_FILES
-  xxx.cpp)
+  svn-update.cpp)
 set(HEADER_FILES
   )
 set(RESOURCE_FILES
@@ -22,6 +22,8 @@ set_target_properties(${TARGET_EXE} PROPERTIES OUTPUT_NAME ${TARGET_NAME})
 
 # list of required third-party libraries
 find_package(fmt CONFIG REQUIRED)
+find_package(indicators CONFIG REQUIRED)
+find_package(tabulate CONFIG REQUIRED)
 find_package(console CONFIG REQUIRED)
 
 # set project compile definitions
@@ -51,7 +53,6 @@ target_link_directories(${TARGET_EXE}
     ${BUILD_PREFIX_PATH}/lib)
 target_link_libraries(${TARGET_EXE}
   PRIVATE
-    getopt.lib
     fmt::fmt-header-only
     console::console)
 

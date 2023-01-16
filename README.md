@@ -1,11 +1,25 @@
-# xxx
+# SvnUpdate
 
 ## Introduction
+This program was made to update all `SVN` repositories contained in a directory and its sub-directories.
+It's implemented in c++ and use cmake for the build-system.
+A command-line option: `--skip` can be used to set a list of `SVN` subdirectories to skip (relative path, separated by `;`).
 
+The process can be described as:
+
+- list all `SVN` subdirectories
+- launch `N` threads to start the update process (where `N` = number of threads in the machine)
+- update all the `SVN` repositories and display progress using a progress-bar (using `indicators` c++ header-only library)
+- display the list of updated `SVN` repositories (using `tabulate` c++ header-only library)
+- log in a file if the `--log` command-line option has been given
 
 ## Usage
 
 ``` console
+# update all subdirectories and log output
+svn-update.exe --path "c:\svn-repos" \
+               --skip "projectA;projectB" \
+               --log "output.log"
 ```
 
 ## Build program
@@ -84,5 +98,9 @@ Solution Explorer => Project => (executable) => Debug and Launch Settings => src
 ```
 
 ``` json
-  "args": []
+  "args": [
+    "--path \"xxx\"",
+    "--skip \"yyy;zzz\"",
+    "--log output.log",
+  ]
 ```

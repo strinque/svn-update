@@ -77,12 +77,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "CompanyName", ""
-            VALUE "FileDescription", ""
+            VALUE "FileDescription", "Update all svn repositories automatically"
             VALUE "FileVersion", "1.0.0.0"
-            VALUE "InternalName", "xxx.exe"
+            VALUE "InternalName", "svn-update.exe"
             VALUE "LegalCopyright", ""
-            VALUE "OriginalFilename", "xxx.exe"
-            VALUE "ProductName", "xxx"
+            VALUE "OriginalFilename", "svn-update.exe"
+            VALUE "ProductName", "svn-update"
             VALUE "ProductVersion", "1.0.0.0"
         END
     END
