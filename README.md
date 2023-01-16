@@ -1,97 +1,118 @@
-# SvnUpdate
+# svn-update
 
-## Introduction
-This program was made to update all `SVN` repositories contained in a directory and its sub-directories.
-It's implemented in c++ and use cmake for the build-system.
-A command-line option: `--skip` can be used to set a list of `SVN` subdirectories to skip (relative path, separated by `;`).
+![svn-update table](https://github.com/strinque/svn-update/blob/master/docs/update_table.png)
 
-The process can be described as:
+A simple **Windows** program to update all `SVN` repositories recursively.  
+Implemented in c++17 and use `vcpkg`/`cmake` for the build-system.  
 
-- list all `SVN` subdirectories
-- launch `N` threads to start the update process (where `N` = number of threads in the machine)
-- update all the `SVN` repositories and display progress using a progress-bar (using `indicators` c++ header-only library)
-- display the list of updated `SVN` repositories (using `tabulate` c++ header-only library)
-- log in a file if the `--log` command-line option has been given
+It uses the `winpp` header-only library from: https://github.com/strinque/winpp.
 
 ## Usage
 
+![svn-update help](https://github.com/strinque/svn-update/blob/master/docs/help.png)
+
 ``` console
 # update all subdirectories and log output
-svn-update.exe --path "c:\svn-repos" \
-               --skip "projectA;projectB" \
+svn-update.exe --path "c:\svn-dir" \
+               --skip "c:\svn-dir\dirA;c:\svn-dir\dirB" \
                --log "output.log"
 ```
 
-## Build program
+A command-line option: `--skip` can be used to set a list of `SVN` subdirectories to skip (path, separated by `;`).
 
-### Introduction
+## Process
 
-The build system has moved from the original Visual-Studio solution/project to cmake (faster compile time, easier to maintain, full control of build).
-A python script: `build.py` has been implemented in order to **download**/**compile**/**install** automatically all the third-party libraries.
+![svn-update update](https://github.com/strinque/svn-update/blob/master/docs/update.gif)
 
-### Build Requirements
+The process executes the followings steps:
 
-In order to build this program, several open-source programs needs to be installed:
+- list all `SVN` subdirectories inside the path
+- launch `N` threads to start the update process (where `N` = maximum number of threads available)
+- update all the `SVN` repositories and display progress using a progress-bar
+- display the list of updated `SVN` repositories (using `libfort` c++ library)
+- log in a file if `--log` command-line option has been given
 
-- install **visual studio** with Windows SDK and English language pack
-    - https://visualstudio.microsoft.com/fr/thank-you-downloading-visual-studio/?sku=Community&rel=16
-    - Visual Studio Installer => Modifier => Modules linguistiques => Anglais
-- install **git** for windows
-    - https://git-scm.com/download/win
-- install **cmake** for windows
-    - https://cmake.org/download/
-- install **python** for windows
-    - https://www.python.org/ftp/python/3.9.6/python-3.9.6-amd64.exe
-- install **vcpkg** for windows
-    - https://vcpkg.io/en/getting-started.html
+## Requirements
 
-`vcpkg` is used to compile the third-party librairies.  
-All `vcpkg` libraries that are required for the program are defined in the standard json file: `vcpkg.json`.  
+This project uses **vcpkg**, a free C/C++ package manager for acquiring and managing libraries to build all the required libraries.  
+It also needs the installation of the **winpp**, a private *header-only library*, inside **vcpkg**.
 
-There are two ways of building the program/libraries:
-- using **python** `build.py` script which will:
-    - install `vcpkg`
-    - compile third-party libraries
-    - compile program
-    - install everything into `x64-windows` directory  
-- using **visual studio**:
-    - compile third-party libraries
-    - compile program
-    - allow **debug**
+### Install vcpkg
 
-> Important: For **visual studio**, an environment variable: `VCPKG_ROOT` with the path of the `vcpkg` installation direction needs to be defined.  
+The install procedure can be found in: https://vcpkg.io/en/getting-started.html.  
 
-### Build with python script
+Open PowerShell: 
 
-Several `python` libraries needs to be installed in order to execute the `build.py` script:
-``` bash
-# update python pip
-python.exe -m pip install --upgrade pip
-
-# install build_tools package
-cd build_tools
-python.exe -m pip install .
+``` console
+cd c:\
+git clone https://github.com/Microsoft/vcpkg.git
+.\vcpkg\bootstrap-vcpkg.bat
+vcpkg integrate install
 ```
 
-Use the `build.py` python script:
+Create a `VCPKG_ROOT` environment variable which points to this vcpkg directory: 
 
-```console
-python.exe build.py --vcpkg-dir="path_to_vcpkg" --build
+``` console
+setx VCPKG_ROOT "c:\vcpkg"
 ```
+This environment variable will be used by **Visual Studio** to locate the `vcpkg` directory.
+
+Create a `x64-windows-static-md` tripplet file used to build the program in shared-mode for **Windows** libraries but static-mode for third-party libraries:
+
+``` console
+Set-Content "$env:VCPKG_ROOT\triplets\community\x64-windows-static-md.cmake" 'set(VCPKG_TARGET_ARCHITECTURE x64)
+set(VCPKG_CRT_LINKAGE dynamic)
+set(VCPKG_LIBRARY_LINKAGE static)'
+```
+
+### Install winpp ports-files
+
+Copy the *vcpkg ports files* from **winpp** *header-only library* repository to the **vcpkg** directory.
+
+``` console
+mkdir $env:VCPKG_ROOT\ports\winpp
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/strinque/winpp/master/vcpkg/ports/winpp/portfile.cmake" -OutFile "$env:VCPKG_ROOT\ports\winpp\portfile.cmake"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/strinque/winpp/master/vcpkg/ports/winpp/vcpkg.json" -OutFile "$env:VCPKG_ROOT\ports\winpp\vcpkg.json"
+```
+
+## Build
+
+### Build using cmake
+
+To build the program with `vcpkg` and `cmake`, follow these steps:
+
+``` console
+git clone https://github.com/strinque/svn-update
+cd svn-update
+mkdir build; cd build
+cmake -DCMAKE_BUILD_TYPE="MinSizeRel" `
+      -DVCPKG_TARGET_TRIPLET="x64-windows-static-md" `
+      -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+      ../
+cmake --build .
+```
+
+The program executable should be compiled in: `svn-update\build\src\MinSizeRel\svn-update.exe`.
+
 
 ### Build with Visual Studio
 
+**Microsoft Visual Studio** can automatically install required **vcpkg** libraries and build the program thanks to the pre-configured files: 
+
+- `CMakeSettings.json`: debug and release settings
+- `vcpkg.json`: libraries dependencies
+
 The following steps needs to be executed in order to build/debug the program:
 
-```
-File => Open => CMake...
-  Choose CMakelists.txt
+```console
+File => Open => Folder...
+  Choose svn-update root directory
 Solution Explorer => Switch between solutions and available views => CMake Targets View
 Select x64-release or x64-debug
-Select the src\program.exe (not bin\program.exe)
+Select the src\svn-update.exe (not bin\svn-update.exe)
 ```
 
-To add command-line input arguments for debugging the program:
+To add command-line arguments for debugging the program:
 
 ```
 Solution Explorer => Project => (executable) => Debug and Launch Settings => src\program.exe
@@ -99,8 +120,7 @@ Solution Explorer => Project => (executable) => Debug and Launch Settings => src
 
 ``` json
   "args": [
-    "--path \"xxx\"",
-    "--skip \"yyy;zzz\"",
-    "--log output.log",
+    "--arg1 \"xxx\"",
+    "--arg2 yyy"
   ]
 ```
