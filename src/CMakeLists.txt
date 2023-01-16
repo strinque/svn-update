@@ -23,7 +23,6 @@ set_target_properties(${TARGET_EXE} PROPERTIES OUTPUT_NAME ${TARGET_NAME})
 
 # list of required third-party libraries
 find_package(fmt CONFIG REQUIRED)
-find_package(indicators CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(libfort CONFIG REQUIRED)
 find_package(winpp CONFIG REQUIRED)
@@ -56,7 +55,6 @@ target_link_directories(${TARGET_EXE}
     ${BUILD_PREFIX_PATH}/lib)
 target_link_libraries(${TARGET_EXE}
   PRIVATE
-    indicators::indicators
     libfort::fort
     fmt::fmt-header-only
     spdlog::spdlog_header_only

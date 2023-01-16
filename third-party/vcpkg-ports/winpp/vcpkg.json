@@ -1,11 +1,10 @@
 {
   "name": "winpp",
-  "version-string": "1.0.15",
+  "version-string": "1.0.21",
   "description": "A collection of modern c++ header-only libraries primarly for windows",
   "homepage": "https://github.com/strinque/winpp",
   "dependencies": [
     "fmt",
-    "indicators",
     {
       "name": "vcpkg-cmake",
       "host": true

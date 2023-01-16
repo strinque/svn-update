@@ -46,9 +46,10 @@ public:
     m_nb_repos = m_repos.size();
     m_results.clear();
 
+    if (m_nb_repos)
     {
       // create progress-bar
-      m_progress_bar = std::make_unique<console::progress_bar>("update svn repositories: ", m_nb_repos);
+      m_progress_bar = std::make_unique<console::progress_bar>("update svn repositories:", m_nb_repos);
 
       // start threads
       spdlog::debug(fmt::format(fmt::emphasis::bold, "launch the svn update commands on repositories:\n"));
