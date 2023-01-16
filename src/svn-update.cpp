@@ -25,6 +25,7 @@ const std::string PROGRAM_VERSION = "1.2";
 
 // declare as global g_svn for access to exit_program signal
 static SvnRepos g_svn;
+static bool g_cancelled = false;
 
 /*============================================
 | Function definitions
@@ -33,6 +34,7 @@ static SvnRepos g_svn;
 void exit_program(int signum)
 {
   fmt::print("event: ctrl-c called => stopping program\n");
+  g_cancelled = true;
   g_svn.stop();
 }
 
@@ -159,11 +161,21 @@ int main(int argc, char** argv)
 
     // list all svn repositories
     spdlog::debug(fmt::format(fmt::emphasis::bold, "{:<45}", "get all svn repositories:"));
-    const std::vector<std::filesystem::path>& svn_repos = files::get_dirs(svn_path, std::regex(R"((\.svn$))"), svn_skip);
+    const std::regex svn_dir_regex(R"((\.svn$))");
+    auto& dir_filter = [svn_skip, svn_dir_regex](const std::filesystem::path& p) -> bool {
+      auto& eq_dir = [p](const std::filesystem::path& p2) -> bool {
+        return std::filesystem::equivalent(p.parent_path(), p2);
+      };
+      return std::regex_search(p.string(), svn_dir_regex) &&
+             std::find_if(svn_skip.begin(), svn_skip.end(), eq_dir) == svn_skip.end();
+    };
+    const std::vector<std::filesystem::path>& svn_repos = files::get_dirs(svn_path, dir_filter);
     add_tag(fmt::color::green, "OK");
 
     // update all the svn repositories
     g_svn.update(svn_repos);
+    if (g_cancelled)
+      throw std::runtime_error("process has been cancelled");
   }
   catch (const std::exception& ex)
   {
