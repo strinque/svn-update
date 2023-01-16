@@ -1,8 +1,8 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
-    REPO strinque/console
-    REF 81ab862a2cf6406fc9975c1ab181b43cd1e48989
-    SHA512 9074c615a5d5dab5493cf6f232e457b447d8fd73fa14bdc5c567906a7129ecaefe2ffa6efaf523c7c18800cbd6db60c61343c5442f867af29e35cd4cc0914882
+    REPO strinque/winpp
+    REF d129064ced7bdcfbe768fa23fe00adbfbe56d49e
+    SHA512 c4e0dfb7fe265a92d5bc5c78a7c1583b7a8c17d367dcec9380d202ecc7f1085733baeebc04e70f3e38c1fb0dc88050419456a9e114b76ea6696ee5bc886a359d
     HEAD_REF master
 )
 

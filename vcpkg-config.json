@@ -19,5 +19,5 @@
       "suffix": ""
     }
   ],
-  "overlays": ["third-party/vcpkg-ports/console"]
+  "overlays": ["third-party/vcpkg-ports/winpp"]
 }

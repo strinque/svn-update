@@ -2,9 +2,10 @@
     "name": "svnupdate",
     "version": "1.0.0",
     "dependencies": [
+        "fmt",
         "indicators",
+        "winpp",
         "libfort",
-        "spdlog",
-        "console"
+        "spdlog"
     ]
 }

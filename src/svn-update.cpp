@@ -14,19 +14,20 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
-#include <console/init.hpp>
-#include <console/parser.hpp>
+#include <winpp/console.hpp>
+#include <winpp/parser.hpp>
+#include <winpp/utf8.hpp>
+#include <winpp/progress-bar.hpp>
+#include <winpp/files.hpp>
+#include <winpp/win.hpp>
 #include <fort.hpp>
-#include <indicators/cursor_control.hpp>
-#include <indicators/progress_bar.hpp>
-#include <windows.h>
 
 /*============================================
 | Declaration
 ==============================================*/
 // program version
 const std::string PROGRAM_NAME = "svn-update";
-const std::string PROGRAM_VERSION = "1.0";
+const std::string PROGRAM_VERSION = "1.1";
 
 /*============================================
 | Function definitions
@@ -107,38 +108,14 @@ std::vector<std::filesystem::path> extract_dirs(const std::string& root,
   return dirs;
 }
 
-// list all sub-directories with filters
-std::vector<std::filesystem::path> list_dirs(const std::string& root,
-                                             const std::regex& pattern = std::regex(R"(.*)"),
-                                             const std::vector<std::filesystem::path>& skip_dirs = {})
-{
-  std::vector<std::filesystem::path> dirs;
-  for (const auto& entry : std::filesystem::recursive_directory_iterator(root))
-  {
-    if (entry.is_directory() &&
-        std::regex_search(entry.path().filename().string(), pattern) &&
-        std::find(skip_dirs.begin(), skip_dirs.end(), entry.path().parent_path()) == skip_dirs.end())
-    {
-      dirs.push_back(entry.path().parent_path());
-    }
-  }
-  return dirs;
-}
-
-class SvnRepos
+class SvnRepos final
 {
 public:
   // constructor
   SvnRepos() :
     m_repos(),
     m_results(),
-    m_bar(indicators::option::BarWidth{ 50 },
-          indicators::option::Start{ "[" },
-          indicators::option::End{ "]" },
-          indicators::option::Fill{ "■" },
-          indicators::option::Lead{ " " },
-          indicators::option::ForegroundColor{ indicators::Color::white },
-          indicators::option::FontStyles{ std::vector<indicators::FontStyle>{indicators::FontStyle::bold} }),
+    m_progress_bar(),
     m_nb_repos(),
     m_running(false),
     m_threads(),
@@ -164,25 +141,26 @@ public:
     m_nb_repos = m_repos.size();
     m_results.clear();
 
-    // initialize progress-bar
-    indicators::show_console_cursor(false);
-    m_bar.set_option(indicators::option::MaxProgress(m_nb_repos));
+    {
+      // create progress-bar
+      m_progress_bar = std::make_unique<console::progress_bar>("update svn repositories: ", m_nb_repos);
+      
+      // start threads
+      spdlog::debug(fmt::format(fmt::emphasis::bold, "launch the svn update commands on repositories:\n"));
+      m_running = true;
+      const std::size_t max_cpu = static_cast<std::size_t>(std::thread::hardware_concurrency());
+      m_threads = std::vector<std::thread>(std::min(m_nb_repos, max_cpu));
+      for (auto& t : m_threads)
+        t = std::thread(&SvnRepos::run, this);
 
-    // start threads
-    spdlog::debug(fmt::format(fmt::emphasis::bold, "launch the svn update commands on repositories:\n"));
-    m_running = true;
-    const std::size_t max_cpu = static_cast<std::size_t>(std::thread::hardware_concurrency());
-    m_threads = std::vector<std::thread>(std::min(m_nb_repos, max_cpu));
-    for (auto& t : m_threads)
-      t = std::thread(&SvnRepos::run, this);
-
-    // wait for threads completion
-    for (auto& t : m_threads)
-      if (t.joinable())
-        t.join();
-
-    // terminate progress-bar
-    indicators::show_console_cursor(true);
+      // wait for threads completion
+      for (auto& t : m_threads)
+        if (t.joinable())
+          t.join();
+      
+      // delete progress-bar
+      m_progress_bar.reset();
+    }
 
     // log updated repositories as table
     log();
@@ -200,108 +178,25 @@ private:
         std::lock_guard<std::mutex> lck(m_mutex);
         if (m_repos.empty())
           return;
-        repo = m_repos.front();
+        repo = m_repos.front().parent_path();
         m_repos.pop();
       }
 
       // execute the update process
       std::string logs;
       std::regex update_ok(R"(^A |^D |^U |^C |^G |E^ |R^ )");
-      bool executed = exec("svn.exe update --accept theirs-full", repo, logs);
+      int exit_code = win::execute("svn.exe update --accept theirs-full", logs, repo);
 
       // store result and update progress-bar - protected by mutex
       {
         std::lock_guard<std::mutex> lck(m_mutex);
-        if (!executed)
+        if (exit_code != 0)
           m_results[repo] = false;
         else if (std::regex_search(logs, update_ok))
           m_results[repo] = true;
-        const std::string& postfix = fmt::format("{:02}% [{}/{}]", (m_bar.current()+1)*100/m_nb_repos, m_bar.current()+1, m_nb_repos);
-        m_bar.set_option(indicators::option::PostfixText{ postfix });
-        m_bar.tick();
+        m_progress_bar->tick();
       }
     }
-  }
-
-  // execute a windows process - blocking
-  bool exec(const std::string& cmd,
-            const std::filesystem::path& path = std::filesystem::current_path(),
-            std::string& logs=std::string())
-  {
-    HANDLE stdout_rd = nullptr;
-    HANDLE stdout_wr = nullptr;
-    bool result;
-    logs.clear();
-    
-    try
-    {
-      // set the security attributes to be inherited by child process
-      SECURITY_ATTRIBUTES sec_attr{};
-      sec_attr.nLength = sizeof(SECURITY_ATTRIBUTES);
-      sec_attr.bInheritHandle = TRUE;
-      sec_attr.lpSecurityDescriptor = NULL;
-
-      // create a pipe for the child process's STDOUT 
-      if (!CreatePipe(&stdout_rd, &stdout_wr, &sec_attr, 0))
-        throw std::runtime_error(fmt::format("CreatePipe failed with error: 0x{:x}", GetLastError()));
-
-      // setup members of STARTUPINFO
-      STARTUPINFO startup_info{};
-      startup_info.cb = sizeof(startup_info);
-      startup_info.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-      startup_info.hStdOutput = stdout_wr;
-      startup_info.hStdError = stdout_wr;
-      startup_info.dwFlags |= STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-      startup_info.wShowWindow = SW_HIDE;
-
-      // setup members of PROCESS_INFORMATION
-      PROCESS_INFORMATION process_info{};
-
-      // create the child process
-      std::string args = cmd;
-      if (!CreateProcess(NULL,                  // no module name
-                         &args[0],              // command line 
-                         NULL,                  // process security attributes 
-                         NULL,                  // primary thread security attributes 
-                         TRUE,                  // handles are inherited 
-                         CREATE_NO_WINDOW,      // creation flags 
-                         NULL,                  // use parent's environment 
-                         path.string().c_str(), // set working current directory 
-                         &startup_info,         // pointer to STARTUPINFO structure 
-                         &process_info))        // pointer to PROCESS_INFORMATION structure
-        throw std::runtime_error(fmt::format("CreateProcess failed with error: 0x{:x}", GetLastError()));
-
-      // close pipes we don't need anymore
-      CloseHandle(process_info.hProcess);
-      CloseHandle(process_info.hThread);
-      CloseHandle(stdout_wr);
-      stdout_wr = nullptr;
-
-      // read buffer from pipe - until the other end has been broken
-      DWORD len = 0;
-      char buf[1024];
-      while (ReadFile(stdout_rd, buf, sizeof(buf) - 1, &len, NULL) && len)
-      {
-        buf[len >= sizeof(buf) ? sizeof(buf) - 1 : len] = 0;
-        logs += buf;
-      }
-      if (GetLastError() != ERROR_SUCCESS && 
-          GetLastError() != ERROR_BROKEN_PIPE)
-        throw std::runtime_error(fmt::format("ReadFile failed with error: 0x{:x}", GetLastError()).c_str());
-      result = !logs.empty();
-    }
-    catch (...)
-    {
-      result = false;
-    }
-
-    // close pipes
-    if (stdout_rd)
-      CloseHandle(stdout_rd);
-    if (stdout_wr)
-      CloseHandle(stdout_wr);
-
-    return result;
   }
 
   void log()
@@ -323,7 +218,7 @@ private:
       std::size_t idx = 1;
       for (const auto& r : m_results)
       {
-        table << r.first << (r.second ? "OK" : "KO") << fort::endr;
+        table << utf8::to_utf8(r.first.string()) << (r.second ? "OK" : "KO") << fort::endr;
         table[idx++][1].set_cell_content_fg_color(r.second ? fort::color::green : fort::color::red);
       }
       spdlog::info("{}\n\n", table.to_string());
@@ -337,7 +232,7 @@ private:
   std::map<std::filesystem::path, bool> m_results;
 
   // progress-bar
-  indicators::ProgressBar m_bar;
+  std::unique_ptr<console::progress_bar> m_progress_bar;
   std::size_t m_nb_repos;
 
   // handling threads
@@ -385,12 +280,12 @@ int main(int argc, char** argv)
 
     // construct the list of directories to skip
     spdlog::debug(fmt::format(fmt::emphasis::bold, "{:<45}", "get the list of directories to skip:"));
-    std::vector<std::filesystem::path> svn_skip = extract_dirs(svn_path, svn_skip_str);
+    const std::vector<std::filesystem::path>& svn_skip = extract_dirs(svn_path, svn_skip_str);
     add_tag(fmt::color::green, "OK");
 
     // list all svn repositories
-    spdlog::debug(fmt::format(fmt::emphasis::bold, "{:<45}", "list all svn repositories:"));
-    std::vector<std::filesystem::path> svn_repos = list_dirs(svn_path, std::regex(R"(\.svn$)"), svn_skip);
+    spdlog::debug(fmt::format(fmt::emphasis::bold, "{:<45}", "get all svn repositories:"));
+    const std::vector<std::filesystem::path>& svn_repos = files::get_dirs(svn_path, std::regex(R"((\.svn$))"), svn_skip);
     add_tag(fmt::color::green, "OK");
 
     // update all the svn repositories
