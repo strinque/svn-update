@@ -71,6 +71,12 @@ public:
     log();
   }
 
+  // stop the svn-update process properly (terminates the current running tasks)
+  void stop()
+  {
+    m_running = false;
+  }
+
 private:
   // run the update process - thread
   void run()
@@ -163,4 +169,11 @@ void SvnRepos::update(const std::vector<std::filesystem::path>& repos)
 {
   if (m_pimpl)
     m_pimpl->update(repos);
+}
+
+// stop the svn-update process properly (terminates the current running tasks)
+void SvnRepos::stop()
+{
+  if (m_pimpl)
+    m_pimpl->stop();
 }

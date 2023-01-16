@@ -1,6 +1,6 @@
 {
   "name": "winpp",
-  "version-string": "1.0.11",
+  "version-string": "1.0.12",
   "description": "A collection of modern c++ header-only libraries primarly for windows",
   "homepage": "https://github.com/strinque/winpp",
   "dependencies": [

@@ -4,6 +4,7 @@
 #include <vector>
 #include <sstream>
 #include <regex>
+#include <signal.h>
 #include <stdbool.h>
 #include <fmt/core.h>
 #include <fmt/color.h>
@@ -22,9 +23,19 @@
 const std::string PROGRAM_NAME = "svn-update";
 const std::string PROGRAM_VERSION = "1.2";
 
+// declare as global g_svn for access to exit_program signal
+static SvnRepos g_svn;
+
 /*============================================
 | Function definitions
 ==============================================*/
+// define the function to be called when ctrl-c is sent to process
+void exit_program(int signum)
+{
+  fmt::print("event: ctrl-c called => stopping program\n");
+  g_svn.stop();
+}
+
 // lambda function to show colored tags
 auto add_tag = [](const fmt::color color, const std::string& text) {
   spdlog::debug(fmt::format(fmt::fg(color) | fmt::emphasis::bold, "[{}]\n", text));
@@ -106,6 +117,9 @@ int main(int argc, char** argv)
   // initialize Windows console
   console::init();
 
+  // register signal handler
+  signal(SIGINT, exit_program);
+
   // parse command-line arguments
   std::string svn_path;
   std::string svn_skip_str;
@@ -149,8 +163,7 @@ int main(int argc, char** argv)
     add_tag(fmt::color::green, "OK");
 
     // update all the svn repositories
-    SvnRepos svn;
-    svn.update(svn_repos);
+    g_svn.update(svn_repos);
   }
   catch (const std::exception& ex)
   {
