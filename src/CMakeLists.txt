@@ -9,9 +9,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # set project source-files
 set(SOURCE_FILES
-  svn-update.cpp)
+  svn-update.cpp
+  SvnRepos.cpp)
 set(HEADER_FILES
-  )
+  SvnRepos.h)
 set(RESOURCE_FILES
   resource.h
   Resource.rc)
