@@ -21,7 +21,7 @@
 ==============================================*/
 // program version
 const std::string PROGRAM_NAME = "svn-update";
-const std::string PROGRAM_VERSION = "1.7";
+const std::string PROGRAM_VERSION = "1.7.1";
 
 // default length in characters to align status 
 constexpr std::size_t g_status_len = 50;
@@ -113,12 +113,12 @@ int main(int argc, char** argv)
 
   // parse command-line arguments
   std::filesystem::path svn_path;
-  std::vector<std::filesystem::path> svn_skip;
+  std::vector<std::string> svn_skip_str;
   std::filesystem::path log_file;
   bool interactive = false;
   console::parser parser(PROGRAM_NAME, PROGRAM_VERSION);
   parser.add("p", "path", "set the path to update the svn repositories", svn_path, true)
-        .add("s", "skip", "skip the update of those directories (separated by ';')", svn_skip)
+        .add("s", "skip", "skip the update of those directories (relative path, separated by ';')", svn_skip_str)
         .add("l", "log", "save the updated list of directories to a log file", log_file)
         .add("i", "interactive", "prompt the user to terminate the program", interactive);
   if (!parser.parse(argc, argv))
@@ -142,6 +142,12 @@ int main(int argc, char** argv)
     // check arguments validity
     if (!std::filesystem::directory_entry(svn_path).exists())
       throw std::runtime_error(fmt::format("the directory: \"{}\" doesn't exists", svn_path.u8string()));
+
+    // convert from relative skip string to absolute path
+    std::vector<std::filesystem::path> svn_skip;
+    std::for_each(svn_skip_str.cbegin(),
+                  svn_skip_str.cend(),
+                  [&](const std::string& p) { svn_skip.push_back(std::filesystem::absolute(svn_path / p)); });
 
     // list all svn repositories
     std::vector<std::filesystem::path> svn_repos;
