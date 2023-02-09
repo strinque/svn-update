@@ -98,16 +98,47 @@ private:
       win::sync_process proc;
       proc.set_working_dir(repo);
       proc.set_timeout(std::chrono::milliseconds(5 * 60 * 1000));
-      const int exit_code = proc.execute("svn.exe update --accept theirs-full --ignore-externals");
-
-      // store result and update progress-bar - protected by mutex
+      int exit_code = proc.execute("svn.exe update --accept theirs-full --ignore-externals");
+      if (exit_code != 0)
       {
         std::lock_guard<std::mutex> lck(m_mutex);
-        std::regex update_ok(R"(^A |^D |^U |^C |^G |E^ |R^ )");
+        m_results[repo] = false;
+      }
+      else
+      {
+        // check if svn update has changed files
+        const bool update_done = std::regex_search(proc.get_logs(), std::regex(R"(^A |^D |^U |^C |^G |E^ |R^ )"));
+
+        // check the status of this repository for failed updates
+        exit_code = proc.execute("svn.exe status");
         if (exit_code != 0)
+        {
+          std::lock_guard<std::mutex> lck(m_mutex);
           m_results[repo] = false;
-        else if (std::regex_search(proc.get_logs(), update_ok))
-          m_results[repo] = true;
+        }
+        else
+        {
+          std::smatch sm;
+          std::regex regex(R"(Summary of conflicts:\s[^0-9]+([0-9]+))");
+          const std::string logs = proc.get_logs();
+          if (std::regex_search(logs, sm, regex) &&
+            (sm.size() == 2) &&
+            (sm.str(1) != "0"))
+          {
+            std::lock_guard<std::mutex> lck(m_mutex);
+            m_results[repo] = false;
+          }
+          else if (update_done)
+          {
+            std::lock_guard<std::mutex> lck(m_mutex);
+            m_results[repo] = true;
+          }
+        }
+      }
+
+      // update progress-bar - protected by mutex
+      {
+        std::lock_guard<std::mutex> lck(m_mutex);
         m_progress_bar->tick();
       }
     }

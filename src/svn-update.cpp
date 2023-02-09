@@ -21,7 +21,7 @@
 ==============================================*/
 // program version
 const std::string PROGRAM_NAME = "svn-update";
-const std::string PROGRAM_VERSION = "1.6";
+const std::string PROGRAM_VERSION = "1.7";
 
 // default length in characters to align status 
 constexpr std::size_t g_status_len = 50;
